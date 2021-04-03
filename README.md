@@ -65,7 +65,7 @@ executor.SetMigrations(migrations)
 ```
 
 ### what is flyway style migrations
-, there's an example:
+Here's an example:
 ```
 V1__test_table1_migration_name.sql
 V2__test_table4_migration_name.sql
