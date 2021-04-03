@@ -130,6 +130,11 @@ func (m *mysqlMigrateExecutor) CheckMigrations() (err error) {
 		}
 	}
 
+	err = m.InitSchemaHistoryTable()
+	if err != nil {
+		return err
+	}
+
 	db, err := m.connectDB()
 	if err != nil {
 		return err
@@ -160,6 +165,10 @@ func (m *mysqlMigrateExecutor) CheckMigrations() (err error) {
 }
 
 func (m *mysqlMigrateExecutor) ShowMigrations() error {
+	err := m.InitSchemaHistoryTable()
+	if err != nil {
+		return err
+	}
 	db, err := m.connectDB()
 	if err != nil {
 		return err
