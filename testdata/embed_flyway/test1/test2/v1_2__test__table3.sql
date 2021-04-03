@@ -1,0 +1,1 @@
+create table if not exists test_table3(id int unsigned not null auto_increment, data text not null, primary key(id))
