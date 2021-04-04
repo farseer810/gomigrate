@@ -82,7 +82,11 @@ func GetMigrationsFromFlywayEmbedFS(embedFS embed.FS, subDirPath string) ([]Migr
 			return nil, err
 		}
 
-		content, err := embedFS.ReadFile(subDirPath + "/" + entry.Name())
+		entryPath := subDirPath + "/" + entry.Name()
+		if subDirPath == "." {
+			entryPath = entry.Name()
+		}
+		content, err := embedFS.ReadFile(entryPath)
 		if err != nil {
 			return nil, err
 		}
