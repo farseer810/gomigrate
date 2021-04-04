@@ -31,6 +31,13 @@ func NewMySQLMigrateExecutor(connSource string) MigrationExecutor {
 	}
 }
 
+func (m *mysqlMigrateExecutor) SetMigrations(migrations []Migration) {
+	m.migrations = make([]Migration, len(migrations))
+	for i := range migrations {
+		m.migrations[i] = migrations[i]
+	}
+}
+
 func (m *mysqlMigrateExecutor) connectDB() (*sql.DB, error) {
 	db, err := sql.Open("mysql", m.connSource)
 	if err != nil {
@@ -42,11 +49,68 @@ func (m *mysqlMigrateExecutor) connectDB() (*sql.DB, error) {
 	return db, nil
 }
 
-func (m *mysqlMigrateExecutor) SetMigrations(migrations []Migration) {
-	m.migrations = make([]Migration, len(migrations))
-	for i := range migrations {
-		m.migrations[i] = migrations[i]
+func (m *mysqlMigrateExecutor) isSchemaHistoryTableExist(db *sql.DB) (bool, error) {
+	rows, err := db.Query("SHOW TABLES")
+	if err != nil {
+		return false, err
 	}
+	defer rows.Close()
+
+	var tableName string
+	for rows.Next() {
+		err = rows.Scan(&tableName)
+		if err != nil {
+			return false, err
+		}
+		if tableName == m.GetSchemaHistoryTableName() {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (m *mysqlMigrateExecutor) addSchemaHistory(db *sql.DB, rank int, migration Migration) error {
+	_, err := db.Exec(fmt.Sprintf("INSERT INTO `%s`(`rank`, `name`, `content`, `installed_time`) VALUES(?, ?, ?, ?)", m.GetSchemaHistoryTableName()),
+		rank,
+		migration.Name,
+		migration.Content,
+		time.Now(),
+	)
+	return err
+}
+
+func (m *mysqlMigrateExecutor) getSchemaHistories(db *sql.DB) ([]SchemaHistory, error) {
+	isInit, err := m.isSchemaHistoryTableExist(db)
+	if err != nil {
+		return nil, err
+	}
+	if !isInit {
+		return make([]SchemaHistory, 0), nil
+	}
+	rows, err := db.Query(fmt.Sprintf("SELECT `rank`, `name`, `content`, `installed_time` FROM `%s` ORDER BY `rank` ASC", m.GetSchemaHistoryTableName()))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var installedTimeStr string
+	schemaHistories := make([]SchemaHistory, 0)
+	for rows.Next() {
+		schemaHistory := SchemaHistory{}
+		err = rows.Scan(&schemaHistory.Rank, &schemaHistory.Name, &schemaHistory.Content, &installedTimeStr)
+		if err != nil {
+			return nil, err
+		}
+		installedTime, err := time.ParseInLocation("2006-01-02 15:04:05", installedTimeStr, time.Local)
+		if err != nil {
+			return nil, err
+		}
+		schemaHistory.InstalledTime = installedTime
+		schemaHistories = append(schemaHistories, schemaHistory)
+	}
+
+	return schemaHistories, err
 }
 
 func (m *mysqlMigrateExecutor) InitSchemaHistoryTable() error {
@@ -71,43 +135,6 @@ func (m *mysqlMigrateExecutor) InitSchemaHistoryTable() error {
 	return err
 }
 
-func (m *mysqlMigrateExecutor) addSchemaHistory(db *sql.DB, rank int, migration Migration) error {
-	_, err := db.Exec(fmt.Sprintf("INSERT INTO `%s`(`rank`, `name`, `content`, `installed_time`) VALUES(?, ?, ?, ?)", m.GetSchemaHistoryTableName()),
-		rank,
-		migration.Name,
-		migration.Content,
-		time.Now(),
-	)
-	return err
-}
-
-func (m *mysqlMigrateExecutor) getSchemaHistories(db *sql.DB) ([]SchemaHistory, error) {
-	rows, err := db.Query(fmt.Sprintf("SELECT `rank`, `name`, `content`, `installed_time` FROM `%s` ORDER BY `rank` ASC", m.GetSchemaHistoryTableName()))
-	if err != nil {
-		return nil, err
-	}
-
-	schemaHistories := make([]SchemaHistory, 0)
-
-	var installedTimeStr string
-	for rows.Next() {
-		schemaHistory := SchemaHistory{}
-		rows.Scan(&schemaHistory.Rank, &schemaHistory.Name, &schemaHistory.Content, &installedTimeStr)
-		if err != nil {
-			return nil, err
-		}
-		installedTime, err := time.ParseInLocation("2006-01-02 15:04:05", installedTimeStr, time.Local)
-		if err != nil {
-			return nil, err
-		}
-		schemaHistory.InstalledTime = installedTime
-		schemaHistories = append(schemaHistories, schemaHistory)
-	}
-	defer rows.Close()
-
-	return schemaHistories, err
-}
-
 func (m *mysqlMigrateExecutor) CheckMigrations() (err error) {
 	// 检查存不存在重复的Migration名称
 	if m.migrations != nil {
@@ -128,11 +155,6 @@ func (m *mysqlMigrateExecutor) CheckMigrations() (err error) {
 		if err != nil {
 			return err
 		}
-	}
-
-	err = m.InitSchemaHistoryTable()
-	if err != nil {
-		return err
 	}
 
 	db, err := m.connectDB()
@@ -165,10 +187,6 @@ func (m *mysqlMigrateExecutor) CheckMigrations() (err error) {
 }
 
 func (m *mysqlMigrateExecutor) ShowMigrations() error {
-	err := m.InitSchemaHistoryTable()
-	if err != nil {
-		return err
-	}
 	db, err := m.connectDB()
 	if err != nil {
 		return err
@@ -188,11 +206,13 @@ func (m *mysqlMigrateExecutor) ShowMigrations() error {
 
 	schemaHistoryMap := make(map[int]*SchemaHistory)
 	maxRank := 0
-	for i, schemaHistory := range schemaHistories {
-		if maxRank < schemaHistory.Rank {
-			maxRank = schemaHistory.Rank
+	if schemaHistories != nil {
+		for i, schemaHistory := range schemaHistories {
+			if maxRank < schemaHistory.Rank {
+				maxRank = schemaHistory.Rank
+			}
+			schemaHistoryMap[schemaHistory.Rank] = &schemaHistories[i]
 		}
-		schemaHistoryMap[schemaHistory.Rank] = &schemaHistories[i]
 	}
 	// 计算需要遍历的最大值
 	maxLen := maxRank
@@ -300,6 +320,17 @@ func (m *mysqlMigrateExecutor) InstallMigrations() error {
 		return err
 	}
 	defer db.Close()
+
+	isInit, err := m.isSchemaHistoryTableExist(db)
+	if err != nil {
+		return err
+	}
+	if !isInit {
+		err = m.InitSchemaHistoryTable()
+		if err != nil {
+			return err
+		}
+	}
 	schemaHistories, err := m.getSchemaHistories(db)
 	if err != nil {
 		return err
