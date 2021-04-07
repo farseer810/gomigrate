@@ -32,7 +32,6 @@ func NewMySQLMigrateExecutor(connSource string) MigrationExecutor {
 	} else {
 		connSource += "?charset=utf8&parseTime=true&loc=Local"
 	}
-	fmt.Println(connSource)
 	db, err := sql.Open("mysql", connSource)
 	if err != nil {
 		panic(err)
