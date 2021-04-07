@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -19,6 +20,19 @@ type mysqlMigrateExecutor struct {
 }
 
 func NewMySQLMigrateExecutor(connSource string) MigrationExecutor {
+	if strings.Contains(connSource, "?") {
+		values, err := url.ParseQuery(connSource[strings.LastIndex(connSource, "?")+1:])
+		if err != nil {
+			panic(err)
+		}
+		values.Set("charset", "utf8")
+		values.Set("parseTime", "true")
+		values.Set("loc", "Local")
+		connSource = connSource[0:strings.LastIndex(connSource, "?")+1] +values.Encode()
+	} else {
+		connSource += "?charset=utf8&parseTime=true&loc=Local"
+	}
+	fmt.Println(connSource)
 	db, err := sql.Open("mysql", connSource)
 	if err != nil {
 		panic(err)
@@ -94,19 +108,13 @@ func (m *mysqlMigrateExecutor) getSchemaHistories(db *sql.DB) ([]SchemaHistory, 
 	}
 	defer rows.Close()
 
-	var installedTimeStr string
 	schemaHistories := make([]SchemaHistory, 0)
 	for rows.Next() {
 		schemaHistory := SchemaHistory{}
-		err = rows.Scan(&schemaHistory.Rank, &schemaHistory.Name, &schemaHistory.Content, &installedTimeStr)
+		err = rows.Scan(&schemaHistory.Rank, &schemaHistory.Name, &schemaHistory.Content, &schemaHistory.InstalledTime)
 		if err != nil {
 			return nil, err
 		}
-		installedTime, err := time.ParseInLocation("2006-01-02 15:04:05", installedTimeStr, time.Local)
-		if err != nil {
-			return nil, err
-		}
-		schemaHistory.InstalledTime = installedTime
 		schemaHistories = append(schemaHistories, schemaHistory)
 	}
 
