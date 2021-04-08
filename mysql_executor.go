@@ -20,18 +20,23 @@ type mysqlMigrateExecutor struct {
 }
 
 func NewMySQLMigrateExecutor(connSource string) MigrationExecutor {
+	var values url.Values
+	var err error
 	if strings.Contains(connSource, "?") {
-		values, err := url.ParseQuery(connSource[strings.LastIndex(connSource, "?")+1:])
+		values, err = url.ParseQuery(connSource[strings.LastIndex(connSource, "?")+1:])
 		if err != nil {
 			panic(err)
 		}
-		values.Set("charset", "utf8")
-		values.Set("parseTime", "true")
-		values.Set("loc", "Local")
-		connSource = connSource[0:strings.LastIndex(connSource, "?")+1] +values.Encode()
+		connSource = connSource[0:strings.LastIndex(connSource, "?")+1]
 	} else {
-		connSource += "?charset=utf8&parseTime=true&loc=Local"
+		values = make(url.Values)
+		connSource += "?"
 	}
+	values.Set("charset", "utf8")
+	values.Set("parseTime", "true")
+	values.Set("loc", "Local")
+	values.Set("multiStatements", "true")
+	connSource = connSource +values.Encode()
 	db, err := sql.Open("mysql", connSource)
 	if err != nil {
 		panic(err)
