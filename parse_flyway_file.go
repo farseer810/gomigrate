@@ -7,11 +7,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
-	"strings"
 )
 
-var reValidFlywayFilename = regexp.MustCompile("(?i)^v(\\d+(_\\d+)?)__(.+)\\.sql$")
+var reValidFlywayFilename = regexp.MustCompile("(?i)^v(\\d+(_\\d+)*)__(.+)\\.sql$")
 
 func GetMigrationsFromFlywayDir(sourcePath string) ([]Migration, error) {
 	sortableMigrations := make(SortableMigrations, 0)
@@ -26,7 +24,7 @@ func GetMigrationsFromFlywayDir(sourcePath string) ([]Migration, error) {
 		}
 
 		versionStr := matches[1]
-		version, err := strconv.ParseFloat(strings.Replace(versionStr, "_", ".", 1), 64)
+		migrationVersion, err := ParseMigrationVersion(versionStr)
 		if err != nil {
 			return err
 		}
@@ -41,8 +39,8 @@ func GetMigrationsFromFlywayDir(sourcePath string) ([]Migration, error) {
 			Content: string(content),
 		}
 		sortableMigrations = append(sortableMigrations, &SortableMigration{
-			M:      migration,
-			Weight: version,
+			M:       migration,
+			Version: migrationVersion,
 		})
 
 		return nil
@@ -77,7 +75,7 @@ func GetMigrationsFromFlywayEmbedFS(embedFS embed.FS, subDirPath string) ([]Migr
 		}
 
 		versionStr := matches[1]
-		version, err := strconv.ParseFloat(strings.Replace(versionStr, "_", ".", 1), 64)
+		migrationVersion, err := ParseMigrationVersion(versionStr)
 		if err != nil {
 			return nil, err
 		}
@@ -95,8 +93,8 @@ func GetMigrationsFromFlywayEmbedFS(embedFS embed.FS, subDirPath string) ([]Migr
 			Content: string(content),
 		}
 		sortableMigrations = append(sortableMigrations, &SortableMigration{
-			M:      migration,
-			Weight: version,
+			M:       migration,
+			Version: migrationVersion,
 		})
 	}
 	sort.Sort(sortableMigrations)
