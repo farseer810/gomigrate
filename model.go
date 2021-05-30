@@ -70,7 +70,7 @@ func (s SortableMigrations) Less(i, j int) bool {
 	for t := 0; t < minVersionLen; t++ {
 		if s[i].Version[t] < s[j].Version[t] {
 			return true
-		} else if s[i].Version[t] < s[j].Version[t] {
+		} else if s[i].Version[t] > s[j].Version[t] {
 			return false
 		}
 	}
